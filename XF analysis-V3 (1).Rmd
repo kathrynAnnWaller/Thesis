@@ -1,0 +1,183 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+```
+
+```{r}
+setwd("~/University of Otago/Cook Lab - Kathryn Waller/experiments/Oro")
+library(tidyverse)
+library(plyr)
+library(readxl)
+library(emmeans)
+library(ggpubr)
+library(ggsci)
+data <- read_excel("Raw data 13,14,15-8-2020.xlsx")
+```
+
+```{r}
+##code to convert OCR and ECAR into per min per mg
+data$`Protein bacteria 2`[which(data$`Protein bacteria 2`=="N/A")] <- 0
+data$`Amount added of bacterium 2 (mL)`[which(data$`Amount added of bacterium 2 (mL)`=="N/A")] <- 0
+data$ECAR[which(data$ECAR < 0 )] <- 0
+data$total_protein <- as.numeric(data$`Protien Bacteria 1`)+as.numeric(data$`Protein bacteria 2`)
+data$total_added <- as.numeric(data$`Amount added of bacterium 1 (mL)`)+as.numeric(data$`Amount added of bacterium 2 (mL)`)
+
+
+data$OCRn <- data$OCR*60/(1000*data$total_protein*data$total_added)
+data$ECARn <- data$ECAR*60/(0.43*data$total_protein*data$total_added)
+data$both_bacteria <- paste(data$`Bacteria 1`, data$`Bacteria 2`, sep = "_")
+```
+
+```{r}
+means <- ddply(data, .(both_bacteria,Condition), summarise,
+               ECAR_mean=mean(ECARn), 
+               ECAR_sd=sd(ECARn), 
+               ECARSEM=ECAR_sd/sqrt(n),
+               OCR_mean=mean(OCRn), 
+               OCR_sd=sd(OCRn), 
+               OCRSEM=OCR_sd/sqrt(n),
+               N=length(ECAR))
+means
+
+write.csv(x = means,"means.csv")
+```
+
+
+```{r}
+###ggplot code
+list <- c("Glucose added","Heme added","Md Added")
+strainlist <- unique(means$both_bacteria[which(!grepl("N/A",means$both_bacteria))])
+
+#function to use later
+plotgraphs <- function(x){
+   a <- subset(means_sub, means$Condition == x)
+   b <- ggplot(a,aes(x=ECAR_mean,y=OCR_mean,color=both_bacteria)) +
+         geom_point() +
+         geom_errorbar(aes(ymin=OCR_mean-OCR_sd/sqrt(N), ymax=OCR_mean+OCR_sd/sqrt(N)),width=20) +
+         geom_errorbarh(aes(xmin=ECAR_mean-ECAR_sd/sqrt(N), xmax=ECAR_mean+ECAR_sd/sqrt(N)),height=2) +
+         theme_classic(base_size = 12) +
+         xlim(0,400) +
+         ylim(0,50) +
+         xlab("ECAR [mpH/(min mg)]") +
+         ylab("OCR [nmol/(min mg)]") +
+         scale_color_(name="", limits=lim, labels=labname) +
+         theme(aspect.ratio = 1, text=element_text(face="bold")) +
+         annotate("text",x=200,y=50,label=x,fontface="bold") 
+  #ggsave(filename = paste(outname,x,".pdf",sep=""),plot = b,device = "pdf",width = 8, height = 8)
+   return(b)
+}
+
+#plot each mono vs coculture comparison
+lapply(strainlist,function(strain){
+   strain1 <- paste(strsplit(strain,split="_")[[1]][1],"N/A",sep="_")
+   strain2 <- paste(strsplit(strain,split="_")[[1]][2],"N/A",sep="_")
+   means_sub <<- subset(means, means$both_bacteria == strain1 | 
+                      means$both_bacteria == strain2 |
+                      means$both_bacteria == strain)
+   lim <<- unique(means_sub$both_bacteria)[c(1,3,2)]
+   labname <<- str_replace_all(lim,"_N/A","")
+   plots <- lapply(list,plotgraphs)
+   plots_arrange <- ggarrange(plotlist=plots,common.legend = T,
+                              legend = "bottom",labels = "AUTO", nrow = 1)
+   outname <- str_replace_all(strain,":","")
+   ggsave(paste(outname,".pdf",sep=""), plot = plots_arrange, device = "pdf", width= 8, height=3.5)
+   return(plots_arrange)
+})
+
+#plot all cocultures without monocultures
+means_sub <- subset(means, !grepl(pattern = "N/A", x=means$both_bacteria))
+lim <- unique(means_sub$both_bacteria)
+labname <- lim
+plots <- lapply(list, plotgraphs)
+plots_arrange <- ggarrange(plotlist=plots,common.legend = T,
+                           legend = "bottom",labels = "AUTO", nrow = 1)
+plots_arrange
+
+
+
+```
+
+```{r}
+
+#me playing around
+
+
+data$`Protein bacteria 2`[which(data$`Protein bacteria 2`=="N/A")] <- 0
+data$`Amount added of bacterium 2 (mL)`[which(data$`Amount added of bacterium 2 (mL)`=="N/A")] <- 0
+data$ECAR[which(data$ECAR < 0 )] <- 0
+data$total_protein <- as.numeric(data$`Protien Bacteria 1`)+as.numeric(data$`Protein bacteria 2`)
+data$total_added <- as.numeric(data$`Amount added of bacterium 1 (mL)`)+as.numeric(data$`Amount added of bacterium 2 (mL)`)
+data$`Bacteria1` <- paste(data$`Bacteria 1`)
+
+
+data$OCRn <- data$OCR*60/(1000*data$total_protein*data$total_added)
+data$ECARn <- data$ECAR*60/(0.43*data$total_protein*data$total_added)
+
+
+means <- ddply(data, .(Bacteria1,Condition), summarise,
+               ECAR_mean=mean(ECARn), 
+               ECAR_sd=sd(ECARn), 
+               OCR_mean=mean(OCRn), 
+               OCR_sd=sd(OCRn), 
+               N=length(ECAR))
+means
+
+list <- c("Glucose added","Heme added","Md Added")
+strainlist <- unique(means$Bacteria1[which(!grepl("N/A",means$Bacteria1))])
+
+
+#function to use later
+plotgraphs <- function(x){
+   a <- subset(means_sub, means$Condition == x)
+   b <- ggplot(a,aes(x=ECAR_mean,y=OCR_mean,color=Bacteria1)) +
+         geom_point() +
+         geom_errorbar(aes(ymin=OCR_mean-OCR_sd/sqrt(N), ymax=OCR_mean+OCR_sd/sqrt(N)),width=20) +
+         geom_errorbarh(aes(xmin=ECAR_mean-ECAR_sd/sqrt(N), xmax=ECAR_mean+ECAR_sd/sqrt(N)),height=2) +
+         theme_classic(base_size = 12) +
+         xlim(0,800) +
+         ylim(0,50) +
+         xlab("ECAR [mpH/(min mg)]") +
+         ylab("OCR [nmol/(min mg)]") +
+         scale_color_jama(name="", limits=lim, labels=labname) +
+         theme(aspect.ratio = 1, text=element_text(face="bold")) +
+         annotate("text",x=400,y=50,label=x,fontface="bold") 
+  #ggsave(filename = paste(outname,x,".pdf",sep=""),plot = b,device = "pdf",width = 8, height = 8)
+   return(b)
+}
+
+
+
+#plot all cocultures without monocultures
+means_sub <- subset(means, !grepl(pattern = "N/A", x=means$Bacteria1))
+lim <- unique(means_sub$Bacteria1)
+labname <- lim
+plots <- lapply(list, plotgraphs)
+plots_arrange <- ggarrange(plotlist=plots,common.legend = T,
+                           legend = "bottom",labels = "AUTO", nrow = 1)
+plots_arrange
+
+
+
+
+```
+
+
+```{r}
+#statisical analysis MANOVA
+lm <- lm(cbind(OCRn,ECARn) ~ both_bacteria*Condition, data=data)
+man <- manova(lm)
+summary(man)
+
+#statisitcal analysis pairwise comparisons
+weight <- c(max(data$OCRn)/max(data$OCRn),max(data$OCRn)/max(data$ECARn)) 
+   lm_OCRECAR <- lm(cbind(OCRn,ECARn) ~ both_bacteria*Condition, data=data)
+   em_OCRECAR <- emmeans(lm_OCRECAR, specs = ~ both_bacteria|Condition, weights = weight)
+   con <-(contrast(em_OCRECAR,"pairwise"))
+con
+```
+
+
+
